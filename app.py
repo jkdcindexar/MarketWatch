@@ -9,62 +9,79 @@ import json
 from google import genai
 from google.genai import types
 
-st.set_page_config(page_title="Market Intelligence Terminal", layout="wide")
+# Page Config
+st.set_page_config(page_title="Terminal", layout="wide")
 
-# Modern Fintech UI Styling
+# Modern, High-Contrast "Midnight" CSS
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
-    body, [class*="css"] { font-family: 'Inter', sans-serif; background-color: #0A0C10; color: #E6EDF3; }
-    .asset-row { padding: 10px; border-bottom: 1px solid #21262D; display: flex; justify-content: space-between; }
-    .change-pos { color: #34D399; } .change-neg { color: #F87171; }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;700&family=JetBrains+Mono&display=swap');
+    
+    html, body, [class*="st"] { font-family: 'Inter', sans-serif; background-color: #050505; color: #E0E0E0; }
+    
+    .terminal-card { 
+        background: #0d0d0d; border: 1px solid #262626; border-radius: 8px; 
+        padding: 20px; margin-bottom: 15px; 
+    }
+    
+    .ticker-header { font-family: 'JetBrains Mono', monospace; font-size: 1.1em; color: #ffffff; }
+    .metric-up { color: #4ade80; font-weight: 700; }
+    .metric-down { color: #f87171; font-weight: 700; }
+    
+    .stButton>button { 
+        background: #171717; border: 1px solid #404040; color: #fafafa; border-radius: 4px;
+        width: 100%; padding: 10px; font-weight: 600; 
+    }
+    .stButton>button:hover { background: #262626; }
+    
+    h1, h2, h3 { color: #ffffff !important; letter-spacing: -0.5px; }
     </style>
 """, unsafe_allow_html=True)
 
-def load_portfolio_sheet(sheet_id: str, gid: str):
-    try:
-        url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
-        df = pd.read_csv(url)
-        df.columns = [str(c).strip() for c in df.columns]
-        return df
-    except Exception as e:
-        st.error(f"Spreadsheet error: {e}")
-        return None
+def load_data(sheet_id, gid):
+    url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
+    return pd.read_csv(url)
 
-def safe_convert(val):
-    try: return float(str(val).replace('%', '').replace('$', '').replace(',', '').strip())
-    except: return None
-
+# Layout
 st.title("Market Intelligence Terminal")
+st.markdown("---")
 
 with st.sidebar:
+    st.header("Terminal Config")
     api_key = st.text_input("Gemini API Key", type="password")
     sheet_id = st.text_input("Sheet ID", value="16p_m-M3rW6BwMh9y8D38U_xJm-zN9FwQ6rS_7v2eA6A")
     gid = st.text_input("GID", value="0")
-    run_btn = st.button("Initialize Analysis")
+    run_btn = st.button("Initialize Pipeline")
 
 if run_btn and api_key:
-    df = load_portfolio_sheet(sheet_id, gid)
-    if df is not None:
-        # Strict Column Validation
-        ticker_col = next((c for c in df.columns if c.lower() in ['ticker', 'symbol']), None)
-        price_col = next((c for c in df.columns if c.lower() in ['price', 'last']), None)
-        change_col = next((c for c in df.columns if c.lower() in ['change', '1d change']), None)
+    df = load_data(sheet_id, gid)
+    
+    # Map your specific columns to the logic
+    # We use 'Security Name' as primary if Ticker is missing
+    ticker_col = 'Ticker' if 'Ticker' in df.columns else 'Security Name'
+    # Since your sheet lacks Price/Change, we provide placeholder metrics
+    price_col = 'Volatility 1Y' # Using Volatility as a proxy for the demo
+    change_col = 'Exp Ratio (TER)' 
 
-        if not all([ticker_col, price_col, change_col]):
-            st.error(f"Missing columns! Found: {list(df.columns)}. Please rename your columns to include 'Ticker', 'Price', and 'Change'.")
-        else:
-            col1, col2 = st.columns([1, 2])
-            with col1:
-                st.subheader("Watchlist")
-                for _, row in df.iterrows():
-                    p_val = safe_convert(row[price_col])
-                    c_val = safe_convert(row[change_col])
-                    c_class = "change-pos" if (c_val or 0) >= 0 else "change-neg"
-                    st.markdown(f"<div class='asset-row'><span>{row[ticker_col]}</span><span>${p_val:.2f} <span class='{c_class}'>{c_val:.2f}%</span></span></div>", unsafe_allow_html=True)
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        st.subheader("Asset Watchlist")
+        for _, row in df.iterrows():
+            st.markdown(f"""
+                <div class='terminal-card'>
+                    <div class='ticker-header'>{row[ticker_col]}</div>
+                    <div style='font-size: 0.9em; margin-top: 5px;'>
+                        Stat: {row[price_col]} | Ratio: <span class='metric-up'>{row[change_col]}</span>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
             
-            with col2:
-                st.subheader("Executive Commentary")
-                client = genai.Client(api_key=api_key)
-                resp = client.models.generate_content(model='gemini-2.5-flash', contents=f"Analyze: {df.to_string()}")
-                st.write(resp.text)
+    with col2:
+        st.subheader("Executive Macro Intelligence")
+        client = genai.Client(api_key=api_key)
+        resp = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=f"Analyze this portfolio structure: {df.to_string()}. Provide a high-level institutional macro outlook."
+        )
+        st.markdown(f"<div class='terminal-card'>{resp.text}</div>", unsafe_allow_html=True)
