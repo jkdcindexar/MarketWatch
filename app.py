@@ -1,75 +1,54 @@
 import streamlit as st
 import pandas as pd
 import yfinance as yf
-import asyncio
-from google import genai
-from google.genai import types
 
-st.set_page_config(page_title="terminl", layout="wide")
+st.set_page_config(page_title="terminl.", layout="wide")
 
-# Modern, minimalist styling
+# Modern, larger, interactive styling
 st.markdown("""
     <style>
-    .main { background: #ffffff; color: #000000; font-family: 'Helvetica', sans-serif; }
-    h1 { font-size: 24px !important; font-weight: bold; }
-    .small-logo { font-size: 14px; font-weight: bold; }
-    .perf-bar { display: flex; gap: 20px; padding: 10px; border-bottom: 1px solid #eee; margin-bottom: 20px; }
-    .green { color: green; } .red { color: red; }
+    .main { font-size: 18px; }
+    .logo { font-size: 80px; font-weight: 800; text-align: center; margin-top: 50px; }
+    .input-box { width: 400px !important; margin: 0 auto; }
+    .perf-bar { display: flex; justify-content: space-around; background: #f8f9fa; padding: 15px; border-radius: 8px; font-weight: bold; }
+    .asset-card { padding: 15px; border: 1px solid #ddd; border-radius: 8px; transition: 0.3s; }
+    .asset-card:hover { background-color: #f0f7ff; cursor: pointer; border-color: #007bff; }
     </style>
 """, unsafe_allow_html=True)
 
-# State Management
-if 'initialized' not in st.session_state:
-    st.session_state.initialized = False
+if 'init' not in st.session_state:
+    st.session_state.init = False
 
-# Screen 1: Initial Login
-if not st.session_state.initialized:
-    st.markdown("<h1 style='text-align:center;'>terminl</h1>", unsafe_allow_html=True)
-    api_key = st.text_input("api key", type="password", label_visibility="collapsed")
-    sheet_id = st.text_input("google sheet id", label_visibility="collapsed")
-    
-    if st.button("enter"):
-        if api_key and sheet_id:
-            st.session_state.api_key = api_key
-            st.session_state.sheet_id = sheet_id
-            st.session_state.initialized = True
+if not st.session_state.init:
+    st.markdown("<div class='logo'>terminl.</div>", unsafe_allow_html=True)
+    with st.container():
+        api = st.text_input("api key", type="password")
+        sid = st.text_input("sheet id")
+        if st.button("enter"):
+            st.session_state.update({'api': api, 'sid': sid, 'init': True})
             st.rerun()
-
-# Screen 2: Main Dashboard
 else:
-    st.markdown("<div class='small-logo'>terminl</div>", unsafe_allow_html=True)
-    
-    # Load and process data
-    url = f"https://docs.google.com/spreadsheets/d/{st.session_state.sheet_id}/export?format=csv&gid=0"
-    df = pd.read_csv(url)
+    st.markdown("<div style='font-size: 20px; font-weight: bold;'>terminl.</div>", unsafe_allow_html=True)
+    df = pd.read_csv(f"https://docs.google.com/spreadsheets/d/{st.session_state.sid}/export?format=csv&gid=0")
     df.columns = [c.strip() for c in df.columns]
-    
-    # 1. Thin Header Bar (Live Aggregates)
-    st.markdown("<div class='perf-bar'>Asset Performance: <b>Equities</b> <span class='green'>+0.2%</span> | <b>Bonds</b> <span class='red'>-0.1%</span> | <b>Commodities</b> <span class='green'>+0.5%</span></div>", unsafe_allow_html=True)
-    
-    col_left, col_right = st.columns([1, 2])
-    
-    with col_left:
-        # Grouping by Asset Class
-        asset_classes = df.groupby('Investment Focus')
-        for focus, group in asset_classes:
-            with st.expander(focus):
-                for _, row in group.iterrows():
-                    ticker = yf.Ticker(row['Ticker'])
-                    price = ticker.history(period='1d')['Close'].iloc[-1]
-                    st.write(f"{row['Security Name']}: ${price:.2f}")
 
-    with col_right:
-        st.subheader("market outlook")
-        client = genai.Client(api_key=st.session_state.api_key)
-        
-        # Summary Header
-        st.write("Markets reacting to current central bank signals...")
-        
-        # Dropdown Deep Analysis
-        with st.expander("expand for full market insight"):
-            resp = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=f"Analyze: {df.to_string()}. Provide deep market insight and commentary."
-            )
-            st.write(resp.text)
+    # Performance Bar
+    st.markdown("<div class='perf-bar'><span>Equities +0.2%</span><span>Crypto +1.5%</span><span>Tech +0.8%</span><span>Bonds -0.1%</span></div>", unsafe_allow_html=True)
+
+    # Interactive Watchlist
+    st.subheader("watchlist")
+    cols = st.columns(4)
+    for i, (_, row) in enumerate(df.iterrows()):
+        t = yf.Ticker(row['Ticker'])
+        hist = t.history(period='1d')
+        # Defensive check for IndexError
+        if not hist.empty:
+            price = hist['Close'].iloc[-1]
+            with cols[i % 4]:
+                st.markdown(f"<div class='asset-card'><b>{row['Security Name']}</b><br>${price:.2f}</div>", unsafe_allow_html=True)
+        else:
+            with cols[i % 4]:
+                st.markdown(f"<div class='asset-card'><b>{row['Security Name']}</b><br>N/A</div>", unsafe_allow_html=True)
+
+    # Note: To show ETF holdings percentages, you would require an external API 
+    # like 'Alpha Vantage' or 'Morningstar' as yfinance does not provide full holdings data.
