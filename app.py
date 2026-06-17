@@ -168,16 +168,27 @@ if st.button("🚀 Analyze My Portfolio & Generate Commentary", use_container_wi
                 status.update(label="Portfolio Review Complete!", state="complete")
                 
                 # --- DISPLAY THE RESULTS ---
-                st.success("🎉 Here is your customized Portfolio Manager Breakdown!")
+                st.success("🎉 Executive Report Compiled Successfully!")
                 
-                # Layout Split: Data Summary vs. AI Commentary
-                col1, col2 = st.columns([1, 2])
+                st.markdown("### 📊 Live Portfolio Metrics")
                 
-                with col1:
-                    st.subheader("📊 Live Captured Market Prices")
-                    price_df = pd.DataFrame.from_dict(gathered_data["market_prices"], orient='index')
-                    st.dataframe(price_df, use_container_width=True)
-                    
-                with col2:
-                    st.subheader("📋 Executive PM Commentary Report")
-                    st.markdown(final_report)
+                # Create professional metric cards dynamically
+                cols = st.columns(len(gathered_data["market_prices"]))
+                for i, (ticker, data) in enumerate(gathered_data["market_prices"].items()):
+                    with cols[i]:
+                        if "error" in data:
+                            st.metric(label=ticker, value="Data Error")
+                        else:
+                            st.metric(
+                                label=ticker, 
+                                value=data["Live Price"], 
+                                delta=f"{data['24h Change (%)']}% (24h)"
+                            )
+                
+                st.markdown("---")
+                st.markdown("### 📋 Executive PM Commentary Report")
+                st.info("Notice: All claims below are strictly sourced from verified RSS feeds.")
+                st.write(final_report)
+                
+                with st.expander("🔍 View Raw Source Data & URLs"):
+                    st.json(gathered_data)
