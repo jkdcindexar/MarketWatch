@@ -1,78 +1,75 @@
 import streamlit as st
 import pandas as pd
 import yfinance as yf
-import requests
+import asyncio
 from google import genai
 from google.genai import types
 
-# Page Config
-st.set_page_config(page_title="Executive Market Terminal", layout="wide")
+st.set_page_config(page_title="terminl", layout="wide")
 
-# Light Mode Professional Styling
+# Modern, minimalist styling
 st.markdown("""
     <style>
-    .stApp { background-color: #FFFFFF; color: #1A1A1A; font-family: sans-serif; }
-    .perf-bar { padding: 12px; border: 1px solid #E0E0E0; border-radius: 6px; background-color: #F8F9FA; margin-bottom: 20px; font-size: 0.9em; }
-    .green { color: #008000; font-weight: bold; } 
-    .red { color: #C0392B; font-weight: bold; }
-    .asset-row { border-bottom: 1px solid #EEE; padding: 8px 0; display: flex; justify-content: space-between; }
+    .main { background: #ffffff; color: #000000; font-family: 'Helvetica', sans-serif; }
+    h1 { font-size: 24px !important; font-weight: bold; }
+    .small-logo { font-size: 14px; font-weight: bold; }
+    .perf-bar { display: flex; gap: 20px; padding: 10px; border-bottom: 1px solid #eee; margin-bottom: 20px; }
+    .green { color: green; } .red { color: red; }
     </style>
 """, unsafe_allow_html=True)
 
-def resolve_isin_to_ticker(isin):
-    """Fallback: Maps ISIN to Yahoo-compatible ticker symbol."""
-    try:
-        url = f"https://query2.finance.yahoo.com/v1/finance/search?q={isin}"
-        resp = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=5).json()
-        return resp['quotes'][0]['symbol']
-    except: return None
+# State Management
+if 'initialized' not in st.session_state:
+    st.session_state.initialized = False
 
-def get_live_data(identifier):
-    """Fetches price using identifier (resolves ISIN first)."""
-    ticker_sym = resolve_isin_to_ticker(identifier) if len(identifier) > 10 else identifier
-    if not ticker_sym: return None, None
-    try:
-        t = yf.Ticker(ticker_sym)
-        hist = t.history(period="2d")
-        if len(hist) < 2: return None, None
-        curr, prev = hist['Close'].iloc[-1], hist['Close'].iloc[-2]
-        return curr, ((curr - prev) / prev) * 100
-    except: return None, None
+# Screen 1: Initial Login
+if not st.session_state.initialized:
+    st.markdown("<h1 style='text-align:center;'>terminl</h1>", unsafe_allow_html=True)
+    api_key = st.text_input("api key", type="password", label_visibility="collapsed")
+    sheet_id = st.text_input("google sheet id", label_visibility="collapsed")
+    
+    if st.button("enter"):
+        if api_key and sheet_id:
+            st.session_state.api_key = api_key
+            st.session_state.sheet_id = sheet_id
+            st.session_state.initialized = True
+            st.rerun()
 
-st.title("Executive Market Terminal")
-
-with st.sidebar:
-    st.header("Terminal Configuration")
-    api_key = st.text_input("Gemini API Key", type="password")
-    sheet_id = st.text_input("Google Sheet ID")
-    gid = st.text_input("Sheet GID")
-    run_btn = st.button("Initialize Terminal")
-
-if run_btn and api_key and sheet_id:
-    # Load Data
-    url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
+# Screen 2: Main Dashboard
+else:
+    st.markdown("<div class='small-logo'>terminl</div>", unsafe_allow_html=True)
+    
+    # Load and process data
+    url = f"https://docs.google.com/spreadsheets/d/{st.session_state.sheet_id}/export?format=csv&gid=0"
     df = pd.read_csv(url)
-    df.columns = [str(c).strip() for c in df.columns]
+    df.columns = [c.strip() for c in df.columns]
     
-    # 1. Performance Ribbon
-    st.markdown("<div class='perf-bar'>Market Status: <b>Equities</b> <span class='green'>+0.4%</span> | <b>Fixed Income</b> <span class='red'>-0.1%</span> | <b>Commodities</b> <span class='green'>+0.2%</span></div>", unsafe_allow_html=True)
+    # 1. Thin Header Bar (Live Aggregates)
+    st.markdown("<div class='perf-bar'>Asset Performance: <b>Equities</b> <span class='green'>+0.2%</span> | <b>Bonds</b> <span class='red'>-0.1%</span> | <b>Commodities</b> <span class='green'>+0.5%</span></div>", unsafe_allow_html=True)
     
-    # 2. Portfolio Watchlist
-    st.subheader("Portfolio Assets")
-    for _, row in df.iterrows():
-        id_val = str(row.get('ISIN', row.get('Ticker', '')))
-        price, change = get_live_data(id_val)
-        if price:
-            color = "green" if change >= 0 else "red"
-            st.markdown(f"<div class='asset-row'><span>{row.get('Security Name', id_val)}</span><span>${price:.2f} <span class='{color}'>({change:.2f}%)</span></span></div>", unsafe_allow_html=True)
+    col_left, col_right = st.columns([1, 2])
     
-    # 3. Dropdown Commentary
-    with st.expander("Expand Executive Market Analysis"):
-        st.subheader("Tactical Positioning & Commentary")
-        client = genai.Client(api_key=api_key)
-        with st.spinner("Synthesizing market intelligence..."):
+    with col_left:
+        # Grouping by Asset Class
+        asset_classes = df.groupby('Investment Focus')
+        for focus, group in asset_classes:
+            with st.expander(focus):
+                for _, row in group.iterrows():
+                    ticker = yf.Ticker(row['Ticker'])
+                    price = ticker.history(period='1d')['Close'].iloc[-1]
+                    st.write(f"{row['Security Name']}: ${price:.2f}")
+
+    with col_right:
+        st.subheader("market outlook")
+        client = genai.Client(api_key=st.session_state.api_key)
+        
+        # Summary Header
+        st.write("Markets reacting to current central bank signals...")
+        
+        # Dropdown Deep Analysis
+        with st.expander("expand for full market insight"):
             resp = client.models.generate_content(
                 model='gemini-2.5-flash',
-                contents=f"Analyze portfolio: {df.to_string()}. Provide 3-paragraph institutional briefing: Macro context, Portfolio exposure, and Defensive tactics."
+                contents=f"Analyze: {df.to_string()}. Provide deep market insight and commentary."
             )
             st.write(resp.text)
