@@ -59,17 +59,35 @@ def find_clues_for_my_portfolio(my_etf_list: list) -> dict:
 # MODULE 3: Async Data Aggregator (Pigeons)
 # =====================================================================
 def fetch_single_etf_data(ticker: str) -> dict:
+    """Uses yfinance to grab the latest live price action for a specific ETF."""
     try:
-        t = yf.Ticker(ticker.strip().upper())
+        ticker_clean = ticker.strip().upper()
+        t = yf.Ticker(ticker_clean)
+        
+        # Grab live info and historical data
+        live_price = t.fast_info['last_price']
         history = t.history(period="5d")
+        
         if history.empty:
-            return {ticker: {"error": "No data"}}
-        current_p = history['Close'].iloc[-1]
-        prev_p = history['Close'].iloc[-2]
-        change = ((current_p - prev_p) / prev_p) * 100
-        return {ticker: {"price": round(current_p, 2), "change": round(change, 2)}}
-    except:
-        return {ticker: {"error": "Failed"}}
+            return {ticker: {"error": "No price data found"}}
+            
+        # Extract previous closing prices
+        prev_close = history['Close'].iloc[-2]
+        five_days_ago = history['Close'].iloc[0]
+        
+        # Calculate price changes
+        change_24h = ((live_price - prev_close) / prev_close) * 100
+        change_5d = ((live_price - five_days_ago) / five_days_ago) * 100
+        
+        return {
+            ticker: {
+                "Live Price": f"${round(live_price, 2)}",
+                "24h Change (%)": round(change_24h, 2),
+                "5d Change (%)": round(change_5d, 2)
+            }
+        }
+    except Exception as e:
+        return {ticker: {"error": f"Failed to fetch: {str(e)}"}}
 
 def fetch_rss_news(keyword: str) -> list:
     headlines = []
